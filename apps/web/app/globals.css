@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
+body {
+  background-image: radial-gradient(120% 80% at 50% -10%, #0d8049 0%, #0a6b3c 45%, #064d2b 100%);
+  background-attachment: fixed;
+}
+
+/* The canvas is a touch surface: the browser must not steal the gesture. */
+.canvas-stage {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border-2 border-ink px-5 py-3 font-mono text-sm font-bold uppercase tracking-wider transition active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-yellow text-ink shadow-[4px_4px_0_0_#111];
+  }
+  .btn-pink {
+    @apply btn bg-pink text-cream shadow-[4px_4px_0_0_#111];
+  }
+  .btn-ghost {
+    @apply btn border-cream/30 bg-white/5 text-cream;
+  }
+  .field {
+    @apply w-full rounded-xl border-2 border-cream/25 bg-white/5 px-4 py-3 font-mono text-sm text-cream placeholder:text-cream/40 focus:border-yellow focus:outline-none;
+  }
+  .seg {
+    @apply flex-1 rounded-full px-3 py-2 font-mono text-xs font-bold uppercase tracking-wider transition;
+  }
+  .seg-on {
+    @apply bg-yellow text-ink;
+  }
+  .seg-off {
+    @apply text-cream/70 hover:text-cream;
+  }
+}

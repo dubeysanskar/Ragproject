@@ -1,0 +1,30 @@
+# Python 3.13. Floors, not exact pins, on anything with a compiled wheel:
+# the older fastembed/mmh3 pins have no cp313 wheel and fall back to a source
+# build that needs MSVC.
+
+# --- hot path (must stay in-process; see PDR §1) ---
+fastapi>=0.115.6
+uvicorn[standard]>=0.34.0
+pydantic>=2.10.4
+numpy>=2.2.1
+
+# embeddings: local int8 ONNX, no network at query time
+fastembed>=0.8.0
+mmh3>=5.0.1
+
+# vector + lexical indexes, both embedded
+qdrant-client>=1.12.2
+rank-bm25>=0.2.2
+
+# --- offline / build-time ---
+datasets>=3.2.0
+pyarrow>=18.1.0
+pandas>=2.2.3
+
+# --- external adapters (never in the hot path) ---
+httpx>=0.28.1
+websockets>=14.1
+python-dotenv>=1.0.1
+
+# /transcribe multipart uploads
+python-multipart>=0.0.20
