@@ -40,12 +40,45 @@ From `bench/report.md` — 132 queries (120 MSMARCO-XI eval + 10 out-of-scope +
 
 | | P50 | P70 | P90 | P100 |
 |---|---|---|---|---|
-| **All queries** | **68.4** | **80.3** | 94.8 | **144.9 ms** |
-| English | 51.3 | 55.2 | 68.4 | 111.7 ms |
-| हिन्दी | 79.4 | 87.8 | 108.2 | 144.9 ms |
-| தமிழ் | 74.6 | 84.5 | 93.8 | 112.2 ms |
+| **All queries** | **36.6** | **39.4** | 46.9 | **74.0 ms** |
+| English | 32.2 | 34.2 | 39.4 | 45.9 ms |
+| हिन्दी | 35.0 | 38.3 | 47.6 | 56.0 ms |
+| தமிழ் | 39.0 | 41.5 | 47.4 | 74.0 ms |
 
-**P100 = 144.9 ms — under the 200 ms target on every query, in every language.**
+**P100 = 74.0 ms — under the 200 ms target on every query, in every language**,
+with 2.7× headroom.
+
+Quality: **95/120 answered**, and of those the gold passage was retrieved
+**70/95 (74%)**. Guardrails: **9/10** out-of-scope and **2/2** unsafe correctly
+refused. The 25 unanswered are refusals, which the bench counts as completed
+responses — refusing is the designed behaviour when nothing clears the
+grounding floor.
+
+Reproduce: `python scripts/bench.py --api http://127.0.0.1:8099`
+
+### Two numbers that were wrong, and how
+
+Both were caught by measurement, not by reading the code.
+
+**Retrieval quality was "100%", which was leakage.** The corpus indexed every
+eval query as a C5 question-key, so each eval query matched a verbatim copy of
+itself at cosine 1.0. That measured the corpus builder, not the retriever.
+Held-out rows now have `questions: []`; the honest figure is 74%, and it moved
+off-topic refusal from 3/10 to 9/10 at the same time.
+
+**P100 was 262 ms — a FAIL — once leakage was removed.** Profiling per stage
+found `retrieve` at 76 ms mean / 178 ms max. `rank_bm25.BM25Okapi.get_scores`
+walks *every* document for *every* query term in Python:
+
+```python
+q_freq = np.array([(doc.get(q) or 0) for doc in self.doc_freqs])
+```
+
+At 7.3k chunks that alone blew the budget. Replacing it with an inverted index
+(`InvertedBM25`) that touches only documents containing each term, plus keying
+the sentence cache by text rather than position (positional matching missed
+whenever retrieval returned a fragment instead of a full parent, costing up to
+96 ms), took P100 from 262 ms to 74 ms.
 
 Per-stage, warm (`/ask` waterfall, visible live in the UI):
 
@@ -54,14 +87,9 @@ guard_input    0.01 ms
 lang_detect    0.01 ms     ← script ranges, not a model
 embed          6.11 ms     ← local ONNX, the irreducible floor
 guard_domain   0.02 ms
-retrieve       2.06 ms     ← dense ANN + BM25 + RRF, in-process
+retrieve       2.06 ms     ← inverted-index BM25 + dense ANN + RRF, in-process
 extract        0.35 ms     ← precomputed sentence vectors
 ```
-
-Quality: **114/120 answered**, and of those, the gold passage was retrieved
-**114/114 (100%)**.
-
-Reproduce: `python scripts/bench.py --api http://127.0.0.1:8099`
 
 ---
 

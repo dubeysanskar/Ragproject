@@ -63,7 +63,7 @@ def extract_answer(
     embedder: Embedder,
     max_candidates: int = 24,
     max_sentences: int = 2,
-    sentence_cache: dict[str, tuple[list[str], np.ndarray]] | None = None,
+    sentence_cache: dict[str, dict[str, np.ndarray]] | None = None,
 ) -> tuple[Answer, float]:
     """Pick the best answering sentence(s) across the retrieved passages.
 
@@ -79,16 +79,20 @@ def extract_answer(
     misses: list[int] = []
 
     for r in retrieved:
-        cache_hit = sentence_cache.get(r.passage_id) if sentence_cache else None
-        cached_sents, cached_matrix = cache_hit if cache_hit else (None, None)
-        for i, s in enumerate(sentences(r.text)):
+        # Look up by sentence *text*, not position: retrieval often returns a
+        # C1/C2 fragment of a passage rather than the full parent, so the i-th
+        # sentence of the hit is rarely the i-th sentence of the cached passage.
+        # Positional matching missed on those and re-encoded, costing up to 96 ms.
+        by_text = sentence_cache.get(r.passage_id) if sentence_cache else None
+        for s in sentences(r.text):
             # Single words are never answers; very long ones are whole paragraphs.
             if not (3 <= len(s.split()) <= 80):
                 continue
             slot = len(candidates)
             candidates.append((s, r))
-            if cached_sents is not None and i < len(cached_sents) and cached_sents[i] == s:
-                cached_vecs.append(cached_matrix[i])
+            vec = by_text.get(s) if by_text else None
+            if vec is not None:
+                cached_vecs.append(vec)
             else:
                 cached_vecs.append(None)  # type: ignore[arg-type]
                 misses.append(slot)
