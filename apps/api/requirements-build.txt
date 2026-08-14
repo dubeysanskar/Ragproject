@@ -1,0 +1,6 @@
+# Corpus-building only — NOT installed in the serving image.
+# Used by scripts/build_corpus.py and scripts/ablate.py.
+-r requirements.txt
+
+pyarrow>=18.1.0
+huggingface-hub>=0.26

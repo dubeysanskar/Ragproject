@@ -115,6 +115,32 @@ resolve children→parents and questions→answering passage → top-4.
 > the answer. `resolve()` maps a C5 hit to the passage that answers it — this
 > was a real bug, caught because the demo answer read exactly like the query.
 
+### Does the matrix earn its complexity? — measured
+
+Full table and caveats in [`bench/ablation.md`](bench/ablation.md)
+(`python scripts/ablate.py`). One index build, retrieval restricted per arm:
+
+| Arm | Recall@5 | MRR@10 |
+|---|---|---|
+| C2 sliding window only (naive baseline) | 0.533 | 0.427 |
+| C3 parent–child only | 0.558 | 0.462 |
+| C1+C2+C3 (no question keys) | 0.567 | 0.453 |
+| All strategies, dense only | 0.508 | 0.414 |
+| **All strategies + BM25 hybrid (shipped)** | **0.758** | **0.554** |
+
+**+42% Recall@5 over a single fixed-size splitter.** But the honest reading is
+that **fusion, not chunking, is doing the work**: all strategies dense-only
+scores 0.508, no better than C1 alone, and it is the lexical arm that takes it
+to 0.758. Dense similarity is soft on exactly the rare tokens — names, numbers,
+transliterations — that decide these queries. The matrix supplies candidates;
+RRF ranks them.
+
+C5-only scores **0.000**, which is the leakage fix working rather than a
+failure: held-out passages carry no question keys, so that arm cannot return
+them even in principle. It also means this eval set can't measure C5's real
+contribution — that needs held-out queries that *paraphrase* indexed ones, which
+MSMARCO-XI doesn't provide.
+
 ---
 
 ## Guardrails — knowing when not to answer

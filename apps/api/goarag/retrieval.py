@@ -146,19 +146,47 @@ class HybridIndex:
         self._bm25 = InvertedBM25(corpus) if corpus else None
 
     # --------------------------------------------------------------- hot path
-    def dense(self, qvec: np.ndarray, k: int) -> list[tuple[str, float]]:
+    def dense(
+        self, qvec: np.ndarray, k: int, strategies: set[str] | None = None
+    ) -> list[tuple[str, float]]:
+        """`strategies` restricts the search to given chunkers. Unused on the
+        hot path (all strategies compete); it exists so scripts/ablate.py can
+        measure one strategy at a time against a single index build."""
+        flt = (
+            models.Filter(
+                must=[models.FieldCondition(
+                    key="strategy", match=models.MatchAny(any=sorted(strategies))
+                )]
+            )
+            if strategies
+            else None
+        )
         hits = self.client.query_points(
-            collection_name=COLLECTION, query=qvec.tolist(), limit=k, with_payload=True
+            collection_name=COLLECTION,
+            query=qvec.tolist(),
+            limit=k,
+            with_payload=True,
+            query_filter=flt,
         ).points
         return [(h.payload["chunk_id"], float(h.score)) for h in hits]
 
-    def lexical(self, query: str, k: int) -> list[tuple[str, float]]:
+    def lexical(
+        self, query: str, k: int, strategies: set[str] | None = None
+    ) -> list[tuple[str, float]]:
         if self._bm25 is None:
             return []
-        return [
-            (self._bm25_ids[i], score)
-            for i, score in self._bm25.top_n(tokenize_lexical(query), k)
-        ]
+        # Over-fetch then filter: the BM25 index is flat, so restricting has to
+        # happen after scoring.
+        n = k * 6 if strategies else k
+        out: list[tuple[str, float]] = []
+        for i, score in self._bm25.top_n(tokenize_lexical(query), n):
+            cid = self._bm25_ids[i]
+            if strategies and self.chunks[cid].strategy.value not in strategies:
+                continue
+            out.append((cid, score))
+            if len(out) >= k:
+                break
+        return out
 
     def resolve(self, chunk_id: str) -> Chunk:
         """Map a matched key back to the text worth answering from.
@@ -203,10 +231,16 @@ def retrieve(
     top_k: int = 4,
     pool: int = 40,
     lang_boost: float = 0.15,
+    strategies: set[str] | None = None,
+    use_lexical: bool = True,
 ) -> list[Retrieved]:
-    """Dense + lexical → RRF → language boost (C4) → dedupe by passage → parents."""
-    dense_hits = index.dense(qvec, pool)
-    lexical_hits = index.lexical(query, pool)
+    """Dense + lexical → RRF → language boost (C4) → dedupe by passage → parents.
+
+    `strategies` and `use_lexical` are ablation knobs; both default to the full
+    system that actually runs in production.
+    """
+    dense_hits = index.dense(qvec, pool, strategies)
+    lexical_hits = index.lexical(query, pool, strategies) if use_lexical else []
 
     fused = rrf_fuse([dense_hits, lexical_hits])
     if not fused:

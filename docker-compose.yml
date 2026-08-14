@@ -1,0 +1,28 @@
+# `docker compose up` reproduces the whole submission locally (PDR §9).
+services:
+  api:
+    build: ./apps/api
+    ports: ["8099:8000"]
+    environment:
+      # All optional. With no keys the system still runs end to end: type a
+      # question instead of speaking, and the extractive path answers it.
+      SARVAM_API_KEY: ${SARVAM_API_KEY:-}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    healthcheck:
+      # Index build is minutes, not seconds — start_period must cover it or
+      # the orchestrator will kill the container mid-boot in a restart loop.
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 600s
+
+  web:
+    build: ./apps/web
+    ports: ["3002:3000"]
+    environment:
+      NEXT_PUBLIC_GOARAG_API: http://localhost:8099
+    depends_on:
+      api: { condition: service_healthy }

@@ -24,10 +24,17 @@ type AskResponse = {
   total_ms: number;
 };
 
+/**
+ * Real queries from the indexed MSMARCO-XI subset, verified to retrieve their
+ * gold passage — plus one deliberate off-topic query to show the guardrail
+ * refusing on camera. Invented questions ("capital of India") are NOT in this
+ * corpus and would demo a refusal or a wrong hit.
+ */
 const SAMPLES = [
-  "what is a corporation",
-  "भारत की राजधानी क्या है",
-  "இந்தியாவின் தலைநகரம் என்ன",
+  "what is a corporation?",
+  "honesty or integrity definition",
+  "कॉर्पोरेशन क्या है?",
+  "கட்டுமானக் கடன்கள் எவ்வாறு செயல்படுகின்றன?",
   "what is the weather in goa tomorrow",
 ];
 
