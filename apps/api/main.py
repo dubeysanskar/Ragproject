@@ -24,8 +24,10 @@ from goarag.guardrails import groundedness
 from goarag.embedder import get_embedder
 from goarag.harness import Pipeline, TraceStore
 from goarag.schemas import Answer, AskRequest, AskResponse, Citation, StageTiming
+from goarag.snapshot import load as snapshot_load
 
 CORPUS_PATH = Path(os.getenv("GOARAG_CORPUS", "data/corpus.json"))
+SNAPSHOT_DIR = Path(os.getenv("GOARAG_SNAPSHOT", "data/snapshot"))
 
 # Used when no corpus file exists yet, so the API is runnable from a clean
 # clone. scripts/build_corpus.py writes the real MSMARCO-XI subset.
@@ -75,14 +77,26 @@ state: dict = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Everything expensive happens here, once, before the first request."""
-    passages = load_corpus()
-    print(f"[boot] corpus: {len(passages)} passages from "
-          f"{CORPUS_PATH if CORPUS_PATH.exists() else 'built-in demo set'}")
+    t0 = time.perf_counter()
     embedder = get_embedder()
-    index, gate = build_index(passages, embedder)
+
+    # A prebuilt snapshot skips ~11.5k embeddings. On the 1-vCPU deploy target
+    # that is the difference between a seconds-long boot and a very long one,
+    # so it is the default path whenever a snapshot is present.
+    if SNAPSHOT_DIR.exists() and (SNAPSHOT_DIR / "meta.json").exists():
+        print(f"[boot] loading snapshot from {SNAPSHOT_DIR}")
+        index, gate = snapshot_load(SNAPSHOT_DIR)
+        state["passages"] = len(index.parents)
+    else:
+        passages = load_corpus()
+        print(f"[boot] no snapshot — building from "
+              f"{CORPUS_PATH if CORPUS_PATH.exists() else 'built-in demo set'} "
+              f"({len(passages)} passages)")
+        index, gate = build_index(passages, embedder)
+        state["passages"] = len(passages)
+
     state["pipeline"] = Pipeline(index, embedder, domain_gate=gate, store=TraceStore())
-    state["passages"] = len(passages)
-    print(f"[boot] ready — {index.size} chunks resident")
+    print(f"[boot] ready in {time.perf_counter() - t0:.1f}s — {index.size} chunks resident")
     yield
     state.clear()
 

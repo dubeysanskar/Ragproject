@@ -45,7 +45,10 @@ def build_index(
     embedder: Embedder,
     batch_size: int = 512,
     verbose: bool = True,
-) -> tuple[HybridIndex, DomainGate]:
+    return_vectors: bool = False,
+):
+    """Returns (index, gate), or (index, gate, vectors) when `return_vectors` —
+    the snapshot writer needs the raw chunk matrix."""
     t0 = time.perf_counter()
     index = HybridIndex(dim=len(embedder.encode_one("dim probe")))
 
@@ -114,4 +117,4 @@ def build_index(
 
     if verbose:
         print(f"  index built in {time.perf_counter() - t0:.1f}s ({index.size} chunks)")
-    return index, gate
+    return (index, gate, vectors) if return_vectors else (index, gate)

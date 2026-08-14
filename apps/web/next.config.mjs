@@ -1,9 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // The scene illustrations are multi-megabyte PNGs; let Next serve resized
-  // AVIF/WebP instead of shipping the originals.
-  images: { formats: ["image/avif", "image/webp"] },
+  // Standalone bundles only the server + the deps actually imported, so the
+  // 1-vCPU VPS never has to run `npm install` or `next build`.
+  output: "standalone",
+  images: { unoptimized: true },
 };
 
 export default nextConfig;
