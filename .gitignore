@@ -14,3 +14,13 @@ bench/latencies.csv
 data/snapshot/
 apps/api/data/
 snapshot.log
+
+# Third-party eval loop, vendored per its runbook; not our code
+eval/
+run.ps1
+eval-requirements.txt
+results/
+scores.jsonl
+calib.json
+eval-*.log
+calib.log

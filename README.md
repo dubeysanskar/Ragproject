@@ -145,6 +145,16 @@ MSMARCO-XI doesn't provide.
 
 ## Guardrails — knowing when not to answer
 
+> **Read this before the table.** Our own out-of-scope set (weather, live
+> scores, stock prices) is *easy* — those queries sit far from the whole corpus.
+> Judged against MSMARCO-XI's real negatives, where the retrieved passages are
+> topically relevant and simply don't answer the question, the first measured
+> false-confidence rate was **1.000**. See [`EVAL.md`](EVAL.md) for what broke,
+> the calibration that followed, and the held-out result (**0.350 false
+> confidence / 0.300 false refusal**). The numbers in this section are real but
+> describe the easy case; EVAL.md describes the hard one.
+
+
 | # | Gate | Mechanism |
 |---|---|---|
 | 1 | STT confidence | below threshold → "I didn't catch that" — never retrieve on garbage |

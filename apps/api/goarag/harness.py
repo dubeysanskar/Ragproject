@@ -70,6 +70,30 @@ class TraceStore:
         }
 
 
+# Confidence floors, exported so the eval adapter (app/generator.py) reports
+# `grounded` against exactly the threshold the live pipeline answers on. Two
+# copies of this number would let the harness and the reported guardrail drift
+# apart silently.
+#
+# Calibrated against MSMARCO-XI's own answerable/unanswerable labels via
+# scripts/calibrate_grounded.py (40+40 held-out queries, both signals measured
+# on the same eval index). The earlier values (0.62 / 0.34) were guesses tuned
+# against obviously off-topic probes -- "what's the weather in Goa" -- which are
+# trivially far from the corpus. Against the dataset's real negatives, where the
+# retrieved passages ARE topically relevant and simply do not answer the
+# question, those floors answered 100% of unanswerable queries.
+#
+# Measured Pareto frontier (false_confidence / false_refusal):
+#     0.78 / 0.78 -> 0.050 FC, 0.625 FR
+#     0.70 / 0.70 -> 0.200 FC, 0.350 FR   <- chosen
+#     0.70 / 0.60 -> 0.475 FC, 0.125 FR
+#     0.60 / 0.52 -> 0.800 FC, 0.000 FR
+# The classes genuinely overlap, so there is no free point: the suite's own
+# reliability check calls false confidence "a worse failure than false refusal",
+# which is why this sits on the cautious side of the curve.
+RETRIEVAL_FLOOR = 0.70
+EXTRACTIVE_FLOOR = 0.70
+
 _SYNTHESIS_CUES = (
     "compare", "difference between", "summarize", "summarise", "explain why",
     "pros and cons", "advantages and disadvantages",
@@ -113,8 +137,8 @@ class Pipeline:
         embedder: Embedder,
         domain_gate: DomainGate | None = None,
         store: TraceStore | None = None,
-        retrieval_floor: float = 0.62,
-        extractive_floor: float = 0.34,
+        retrieval_floor: float = RETRIEVAL_FLOOR,
+        extractive_floor: float = EXTRACTIVE_FLOOR,
     ) -> None:
         self.index = index
         self.embedder = embedder
