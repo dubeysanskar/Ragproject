@@ -35,24 +35,38 @@ starts at query text, which is the quantity the task specifies
 
 ## Measured results
 
-From `bench/report.md` — 132 queries (120 MSMARCO-XI eval + 10 out-of-scope +
-2 unsafe), against the live API over HTTP:
+Measured on the **deployed VPS** (1 vCPU, shared with other services) — not a
+developer laptop — over 120 MSMARCO-XI eval queries plus 10 off-topic/greeting
+probes. Live: <https://goarag.72-61-251-132.sslip.io>
 
 | | P50 | P70 | P90 | P100 |
 |---|---|---|---|---|
-| **All queries** | **36.6** | **39.4** | 46.9 | **74.0 ms** |
-| English | 32.2 | 34.2 | 39.4 | 45.9 ms |
-| हिन्दी | 35.0 | 38.3 | 47.6 | 56.0 ms |
-| தமிழ் | 39.0 | 41.5 | 47.4 | 74.0 ms |
+| **All queries** | **19.9** | **21.6** | 25.6 | **87.6 ms** |
 
-**P100 = 74.0 ms — under the 200 ms target on every query, in every language**,
-with 2.7× headroom.
+**P100 = 87.6 ms against a 200 ms target**, on one shared core.
 
-Quality: **95/120 answered**, and of those the gold passage was retrieved
-**70/95 (74%)**. Guardrails: **9/10** out-of-scope and **2/2** unsafe correctly
-refused. The 25 unanswered are refusals, which the bench counts as completed
-responses — refusing is the designed behaviour when nothing clears the
-grounding floor.
+Quality and guardrails:
+
+- **69/120 answered**; of those, the gold passage was retrieved **52/69 (75%)**.
+- **10/10** off-topic and greeting probes correctly refused; **2/2** unsafe.
+
+The 51 refusals are deliberate. Grounding floors are calibrated at 0.70/0.70,
+a point on a measured Pareto frontier that trades ~0.35 false-refusal for
+~0.20 false-confidence (`scripts/calibrate_grounded.py`). Answering less often
+is the price of not fabricating, and on this dataset that trade is the whole
+point — see *Calibrating against real negatives* below.
+
+Voice is verified end to end against live Sarvam, using real synthesised speech
+rather than a mocked transcript:
+
+| spoken query | STT | pipeline |
+|---|---|---|
+| `कॉर्पोरेशन क्या है?` | 681 ms | extractive, 21.6 ms |
+| `what is a corporation` | 383 ms | extractive, 17.9 ms |
+| `கட்டுமானக் கடன்கள் எவ்வாறு செயல்படுகின்றன?` | 1030 ms | extractive, 23.5 ms |
+
+STT sits outside the measured budget by design (it streams while the user
+speaks); the budget starts at query text, which is what the task specifies.
 
 Reproduce: `python scripts/bench.py --api http://127.0.0.1:8099`
 
@@ -79,6 +93,29 @@ At 7.3k chunks that alone blew the budget. Replacing it with an inverted index
 the sentence cache by text rather than position (positional matching missed
 whenever retrieval returned a fragment instead of a full parent, costing up to
 96 ms), took P100 from 262 ms to 74 ms.
+
+**"Hi" got a confident answer.** With the floors live, two single-word inputs
+still slipped through: `Hi` returned *"That was the day Red Auerbach was hi…"*
+and `ok` returned *"…seems to work ok…"* — fluent, cited, and entirely
+fabricated as responses. Raising the grounding floor cannot fix this, and the
+measurement shows why:
+
+| query | max dense similarity |
+|---|---|
+| `Hi` | **0.872** |
+| `what is a corporation` (real) | 0.781 |
+
+**A greeting scores *higher* than a real question.** Very short strings embed
+near the centre of the vector space and sit close to everything, so any floor
+strict enough to reject `Hi` rejects real queries first. The signal isn't in
+retrieval — it's in the query. `is_contentless()` now refuses inputs of one
+token or pure filler, before retrieval runs. No MSMARCO-XI eval query is a
+single token (the shortest are two, `sty causes`), so this costs 0/120
+answerable queries and took refusal from 8/10 to **10/10**.
+
+A related trap: Python's `\w` doesn't match Unicode combining marks, so
+`நன்றி` tokenises into two fragments and dodged a token-count check entirely.
+The gate compares the whole normalised string too.
 
 Per-stage, warm (`/ask` waterfall, visible live in the UI):
 

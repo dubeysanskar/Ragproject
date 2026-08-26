@@ -92,3 +92,4 @@ class RefusalReason(str, Enum):
     OFF_TOPIC = "off_topic"
     UNSAFE = "unsafe"
     NO_GROUNDING = "no_grounding"
+    CONTENTLESS = "contentless"

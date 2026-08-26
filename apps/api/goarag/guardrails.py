@@ -13,6 +13,19 @@ import numpy as np
 
 from .schemas import RefusalReason
 
+_WORD = re.compile(r"\w+", re.UNICODE)
+
+# Greetings and acknowledgements across the corpus languages. Only consulted
+# when *every* token is filler, so "ok google what is a corporation" still
+# retrieves normally.
+_FILLER = {
+    "hi", "hey", "hello", "yo", "thanks", "thank", "you", "ok", "okay", "k",
+    "please", "there", "good", "morning", "evening", "night", "bye", "test",
+    "testing", "namaste", "namaskar", "dhanyavaad", "shukriya", "vanakkam",
+    "nandri", "नमस्ते", "धन्यवाद",
+    "வணக்கம்", "நன்றி",
+}
+
 # Multilingual blocklist. Deliberately narrow: this gate exists to refuse
 # clearly abusive or self-harm input, not to police topic — that is the
 # off-topic gate's job, and conflating the two produces smug refusals.
@@ -78,12 +91,41 @@ class DomainGate:
         return self.similarity(qvec) < self.tau
 
 
+def is_contentless(text: str) -> bool:
+    """A greeting or filler carries no information need.
+
+    This has to be decided on the *query*, because retrieval scores cannot
+    decide it. Measured on the live index: "Hi" scores 0.872 max dense
+    similarity while the real question "what is a corporation" scores 0.781.
+    Very short strings embed near the centre of the space and sit close to
+    everything, so any floor high enough to reject "Hi" rejects real
+    questions first. "Hi" matched "...the day Red Auerbach was hi[red]..."
+    and "ok" matched "...seems to work ok...", both fluent and both lies.
+
+    Gate: a single token, or nothing but greeting/filler words. No eval
+    query in MSMARCO-XI is one token (the shortest are two: "sty causes"),
+    so this costs 0/120 answerable queries.
+    """
+    # Whole-string check first: Python's \w does not match combining marks,
+    # so an Indic word carrying a virama tokenises into two fragments and
+    # would otherwise dodge both branches below.
+    whole = text.strip().lower().strip("!?.,। ")
+    if not whole or whole in _FILLER:
+        return True
+    tokens = [t.lower() for t in _WORD.findall(text)]
+    if len(tokens) < 2:
+        return True
+    return all(t in _FILLER for t in tokens)
+
+
 def check_input(text: str, stt_confidence: float | None, min_confidence: float = 0.55):
     """Input guardrails 1 and 3. Returns a RefusalReason or None."""
     if stt_confidence is not None and stt_confidence < min_confidence:
         return RefusalReason.LOW_STT_CONFIDENCE
     if _UNSAFE.search(text):
         return RefusalReason.UNSAFE
+    if is_contentless(text):
+        return RefusalReason.CONTENTLESS
     return None
 
 
@@ -122,5 +164,8 @@ REFUSAL_TEXT = {
     RefusalReason.UNSAFE: "I can't help with that request.",
     RefusalReason.NO_GROUNDING: (
         "I don't have enough grounded context to answer that confidently."
+    ),
+    RefusalReason.CONTENTLESS: (
+        "Ask me a question and I'll look it up — I need something to search for."
     ),
 }
